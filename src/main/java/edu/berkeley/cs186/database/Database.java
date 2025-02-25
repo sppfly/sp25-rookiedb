@@ -27,6 +27,8 @@ import edu.berkeley.cs186.database.recovery.DummyRecoveryManager;
 import edu.berkeley.cs186.database.recovery.RecoveryManager;
 import edu.berkeley.cs186.database.table.*;
 import edu.berkeley.cs186.database.table.stats.TableStats;
+import edu.berkeley.cs186.database.table.Record;
+
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
