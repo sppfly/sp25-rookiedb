@@ -1,5 +1,13 @@
 package edu.berkeley.cs186.database.index;
 
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+
 import edu.berkeley.cs186.database.common.Buffer;
 import edu.berkeley.cs186.database.common.Pair;
 import edu.berkeley.cs186.database.concurrency.LockContext;
@@ -8,9 +16,6 @@ import edu.berkeley.cs186.database.databox.Type;
 import edu.berkeley.cs186.database.memory.BufferManager;
 import edu.berkeley.cs186.database.memory.Page;
 import edu.berkeley.cs186.database.table.RecordId;
-
-import java.nio.ByteBuffer;
-import java.util.*;
 
 /**
  * A inner node of a B+ tree. Every inner node in a B+ tree of order d stores
@@ -103,8 +108,49 @@ class InnerNode extends BPlusNode {
     @Override
     public Optional<Pair<DataBox, Long>> put(DataBox key, RecordId rid) {
         // TODO(proj2): implement
+        int indexToInsert = 0;
+        for (DataBox oneKey : keys) {
+            if (key.compareTo(oneKey) < 0) {
+                break;
+            }
+            indexToInsert += 1;
+        }
+        var res = getChild(indexToInsert).put(key, rid);
+        if (res.isEmpty()) {
+            return res;
+        }
 
-        return Optional.empty();
+        // otherwise insert 
+        keys.add(indexToInsert, res.get().getFirst());
+        // this is the rightsibling of the last one, so index + 1 
+        children.add(indexToInsert + 1, res.get().getSecond());
+        int D = metadata.getOrder();
+
+        if (keys.size() <= 2 * D) {
+            sync();
+            return Optional.empty();
+        }
+
+        // create new node
+        List<DataBox> newKeys = new ArrayList<>();
+        List<Long> newChildren = new ArrayList<>();
+
+        for (int i = D + 1; i < 2 * D + 1; i++) {
+            newKeys.add(keys.get(i));
+            newChildren.add(children.get(i));
+        }
+        newChildren.add(children.get(2 * D + 1));
+
+        keys.removeAll(newKeys);
+        children.removeAll(newChildren);
+
+        var newNode = new InnerNode(metadata, bufferManager, newKeys, newChildren, treeContext);
+
+        var keyToReturn = keys.get(D);
+        keys.remove(D);
+        sync();
+
+        return Optional.of(new Pair(keyToReturn, newNode.page.getPageNum()));
     }
 
     // See BPlusNode.bulkLoad.

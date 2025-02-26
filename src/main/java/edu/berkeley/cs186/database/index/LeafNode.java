@@ -1,5 +1,13 @@
 package edu.berkeley.cs186.database.index;
 
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+
 import edu.berkeley.cs186.database.common.Buffer;
 import edu.berkeley.cs186.database.common.Pair;
 import edu.berkeley.cs186.database.concurrency.LockContext;
@@ -8,9 +16,6 @@ import edu.berkeley.cs186.database.databox.Type;
 import edu.berkeley.cs186.database.memory.BufferManager;
 import edu.berkeley.cs186.database.memory.Page;
 import edu.berkeley.cs186.database.table.RecordId;
-
-import java.nio.ByteBuffer;
-import java.util.*;
 
 /**
  * A leaf of a B+ tree. Every leaf in a B+ tree of order d stores between d and
@@ -162,7 +167,52 @@ class LeafNode extends BPlusNode {
     public Optional<Pair<DataBox, Long>> put(DataBox key, RecordId rid) {
         // TODO(proj2): implement
 
-        return Optional.empty();
+        // find the position to insert
+        int indexToInsert = 0;
+        for (DataBox oneKey : keys) {
+            if (oneKey.compareTo(key) == 0) {
+                throw new BPlusTreeException("Can NOT insert duplicate key to index");
+            } else if (oneKey.compareTo(key) > 0) {
+                break;
+            }
+            indexToInsert += 1;
+        }
+
+        int D = metadata.getOrder();
+
+        // insert the pair
+        keys.add(indexToInsert, key);
+        rids.add(indexToInsert, rid);
+        if (keys.size() <= D * 2) {
+            sync();
+            return Optional.empty();
+        }
+
+        assert keys.size() == D * 2 + 1;
+
+        // if overflow, 
+        List<DataBox> newKeys = new ArrayList<>();
+        List<RecordId> newRids = new ArrayList<>();
+
+        // move k + 1 pairs to new lists
+        for (int i = D; i < 2 * D + 1; i++) {
+            newKeys.add(keys.get(i));
+            newRids.add(rids.get(i));
+        }
+
+        // calling this api give us better performance than add and remove
+        // removeAll copy left ones, which is more cache-friendly
+        keys.removeAll(newKeys);
+        rids.removeAll(newRids);
+
+        // create new Node
+        var newNode = new LeafNode(metadata, bufferManager, newKeys, newRids, rightSibling, treeContext);
+        var newNodePageNum = newNode.getPage().getPageNum();
+        
+        this.rightSibling = Optional.of(newNodePageNum);
+
+        sync();
+        return Optional.of(new Pair<>(newKeys.get(0), newNodePageNum));
     }
 
     // See BPlusNode.bulkLoad.
@@ -184,6 +234,7 @@ class LeafNode extends BPlusNode {
         }
         keys.remove(index);
         rids.remove(index);
+        sync();
     }
 
     // Iterators ///////////////////////////////////////////////////////////////
