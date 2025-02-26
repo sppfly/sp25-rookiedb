@@ -221,7 +221,39 @@ class LeafNode extends BPlusNode {
             float fillFactor) {
         // TODO(proj2): implement
 
-        return Optional.empty();
+        var cap = (int) Math.ceil(fillFactor * 2 * metadata.getOrder());
+        while (data.hasNext()) {
+            if (keys.size() >= cap + 1) {
+                break;
+            } 
+            var pair = data.next();
+            keys.add(pair.getFirst());
+            rids.add(pair.getSecond());
+        }
+
+        // data does not even fill this leaf
+        if (keys.size() < cap + 1) {
+            sync();
+            return Optional.empty();
+        }
+
+        // otherwise create a new leaf
+        var newKeys = new ArrayList<DataBox>();
+        newKeys.add(keys.getLast());
+        keys.removeLast();
+
+        var newRids = new ArrayList<RecordId>();
+        newRids.add(rids.getLast());
+        rids.removeLast();
+
+        sync();
+
+        var newLeaf = new LeafNode(metadata, bufferManager, newKeys, newRids, Optional.empty(), treeContext);
+        var newPageNum = newLeaf.getPage().getPageNum();
+        rightSibling = Optional.of(newPageNum);
+
+
+        return Optional.of(new Pair<>(newKeys.getFirst(), newPageNum));
     }
 
     // See BPlusNode.remove.
