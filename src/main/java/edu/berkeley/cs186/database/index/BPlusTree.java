@@ -7,7 +7,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
-import java.util.NoSuchElementException;
 import java.util.Optional;
 
 import edu.berkeley.cs186.database.TransactionContext;
@@ -208,7 +207,7 @@ public class BPlusTree {
 
         // TODO(proj2): Return a BPlusTreeIterator.
 
-        return Collections.emptyIterator();
+        return new BPlusTreeIterator();
     }
 
     /**
@@ -241,7 +240,7 @@ public class BPlusTree {
 
         // TODO(proj2): Return a BPlusTreeIterator.
 
-        return Collections.emptyIterator();
+        return new BPlusTreeIterator(key);
     }
 
     /**
@@ -439,18 +438,40 @@ public class BPlusTree {
     private class BPlusTreeIterator implements Iterator<RecordId> {
         // TODO(proj2): Add whatever fields and constructors you want here.
 
+
+
+        private LeafNode current;
+        private Iterator<RecordId> iterator;
+
+        public BPlusTreeIterator() {
+            this.current = root.getLeftmostLeaf();
+            this.iterator = this.current.scanAll();
+        }
+
+
+        public BPlusTreeIterator(DataBox key) {
+            this.current = root.get(key);
+            this.iterator = this.current.scanGreaterEqual(key);
+        }
+
         @Override
         public boolean hasNext() {
             // TODO(proj2): implement
-
-            return false;
+            if (iterator.hasNext()) {
+                return true;
+            }
+            if (current.getRightSibling().isEmpty()) {
+                return false;
+            }
+            current = current.getRightSibling().get();
+            iterator = current.scanAll();
+            return iterator.hasNext();
         }
 
         @Override
         public RecordId next() {
             // TODO(proj2): implement
-
-            throw new NoSuchElementException();
+            return iterator.next();
         }
     }
 }
