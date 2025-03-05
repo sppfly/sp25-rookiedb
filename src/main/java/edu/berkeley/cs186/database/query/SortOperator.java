@@ -7,6 +7,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.PriorityQueue;
 
+import org.xml.sax.EntityResolver;
+
 import edu.berkeley.cs186.database.TransactionContext;
 import edu.berkeley.cs186.database.common.Pair;
 import edu.berkeley.cs186.database.common.iterator.BacktrackingIterator;
@@ -159,7 +161,22 @@ public class SortOperator extends QueryOperator {
      */
     public List<Run> mergePass(List<Run> runs) {
         // TODO(proj3_part1): implement
-        return Collections.emptyList();
+        var size = numBuffers - 1;
+        var res = new ArrayList<Run>();
+        var container = new ArrayList<Run>();
+        for (var run : runs) {
+            if (container.size() < size) {
+                container.add(run);
+            } else {
+                res.add(mergeSortedRuns(container));
+                container.clear();
+                container.add(run);
+            }
+        }
+        if (!container.isEmpty()) {
+            res.add(mergeSortedRuns(container));
+        }
+        return res;
     }
 
     /**
