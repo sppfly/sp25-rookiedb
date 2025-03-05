@@ -1,5 +1,12 @@
 package edu.berkeley.cs186.database.query;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
+import java.util.PriorityQueue;
+
 import edu.berkeley.cs186.database.TransactionContext;
 import edu.berkeley.cs186.database.common.Pair;
 import edu.berkeley.cs186.database.common.iterator.BacktrackingIterator;
@@ -7,8 +14,6 @@ import edu.berkeley.cs186.database.query.disk.Run;
 import edu.berkeley.cs186.database.table.Record;
 import edu.berkeley.cs186.database.table.Schema;
 import edu.berkeley.cs186.database.table.stats.TableStats;
-
-import java.util.*;
 
 public class SortOperator extends QueryOperator {
     protected Comparator<Record> comparator;
@@ -87,14 +92,18 @@ public class SortOperator extends QueryOperator {
      */
     public Run sortRun(Iterator<Record> records) {
         // TODO(proj3_part1): implement
-        return null;
+        var data = new ArrayList<Record>();
+        while (records.hasNext()) {
+            data.add(records.next());
+        }
+        data.sort(comparator);
+        return makeRun(data);
     }
 
     /**
      * Given a list of sorted runs, returns a new run that is the result of
      * merging the input runs. You should use a Priority Queue (java.util.PriorityQueue)
-     * to determine which record should be should be added to the output run
-     * next.
+     * to determine which record should be added to the output run next.
      *
      * You are NOT allowed to have more than runs.size() records in your
      * priority queue at a given moment. It is recommended that your Priority
@@ -108,7 +117,24 @@ public class SortOperator extends QueryOperator {
     public Run mergeSortedRuns(List<Run> runs) {
         assert (runs.size() <= this.numBuffers - 1);
         // TODO(proj3_part1): implement
-        return null;
+        var newRun = makeRun();
+        var pq = new PriorityQueue<>(runs.size(), new RecordPairComparator());
+        var iterators = new ArrayList<Iterator<Record>>();
+
+        for (var i = 0; i < runs.size(); i++) {
+            var iterator = runs.get(i).iterator();
+            iterators.add(iterator);
+            pq.add(new Pair<>(iterator.next(), i));
+        }
+        while (!pq.isEmpty()) {
+            Pair<Record, Integer> pair = pq.poll();
+            newRun.add(pair.getFirst());
+            var i = pair.getSecond();
+            if (iterators.get(i).hasNext()) {
+                pq.add(new Pair<>(iterators.get(i).next(), i));
+            }
+        }
+        return newRun;
     }
 
     /**
@@ -147,6 +173,8 @@ public class SortOperator extends QueryOperator {
     public Run sort() {
         // Iterator over the records of the relation we want to sort
         Iterator<Record> sourceIterator = getSource().iterator();
+
+
 
         // TODO(proj3_part1): implement
         return makeRun(); // TODO(proj3_part1): replace this!
