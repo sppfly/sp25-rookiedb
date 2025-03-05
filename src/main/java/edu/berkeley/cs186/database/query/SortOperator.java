@@ -7,8 +7,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.PriorityQueue;
 
-import org.xml.sax.EntityResolver;
-
 import edu.berkeley.cs186.database.TransactionContext;
 import edu.berkeley.cs186.database.common.Pair;
 import edu.berkeley.cs186.database.common.iterator.BacktrackingIterator;
@@ -190,11 +188,15 @@ public class SortOperator extends QueryOperator {
     public Run sort() {
         // Iterator over the records of the relation we want to sort
         Iterator<Record> sourceIterator = getSource().iterator();
-
-
-
+        List<Run> runs = new ArrayList<>();
+        while (sourceIterator.hasNext()) {
+            runs.add(sortRun(QueryOperator.getBlockIterator(sourceIterator, getSource().getSchema(), numBuffers)));
+        }
+        while (runs.size() > 1) {
+            runs = mergePass(runs);
+        }
         // TODO(proj3_part1): implement
-        return makeRun(); // TODO(proj3_part1): replace this!
+        return runs.get(0); // TODO(proj3_part1): replace this!
     }
 
     /**
