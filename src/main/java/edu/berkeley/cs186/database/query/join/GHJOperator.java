@@ -1,5 +1,10 @@
 package edu.berkeley.cs186.database.query.join;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+
 import edu.berkeley.cs186.database.TransactionContext;
 import edu.berkeley.cs186.database.common.HashFunc;
 import edu.berkeley.cs186.database.common.Pair;
@@ -11,8 +16,6 @@ import edu.berkeley.cs186.database.query.disk.Partition;
 import edu.berkeley.cs186.database.query.disk.Run;
 import edu.berkeley.cs186.database.table.Record;
 import edu.berkeley.cs186.database.table.Schema;
-
-import java.util.*;
 
 public class GHJOperator extends JoinOperator {
     private int numBuffers;
@@ -71,7 +74,19 @@ public class GHJOperator extends JoinOperator {
         // You may find the implementation in SHJOperator.java to be a good
         // starting point. You can use the static method HashFunc.hashDataBox
         // to get a hash value.
-        return;
+        for (Record record : records) {
+            DataBox columVal;
+            if (left) {
+                columVal = record.getValue(getLeftColumnIndex());
+            } else {
+                columVal = record.getValue(getRightColumnIndex());
+            }
+            int hash = HashFunc.hashDataBox(columVal, pass);
+            int partitionNum = hash % partitions.length;
+            if (partitionNum < 0)  // hash might be negative
+                partitionNum += partitions.length;
+            partitions[partitionNum].add(record);
+        }
     }
 
     /**
@@ -112,6 +127,27 @@ public class GHJOperator extends JoinOperator {
         // You shouldn't refer to any variable starting with "left" or "right"
         // here, use the "build" and "probe" variables we set up for you.
         // Check out how SHJOperator implements this function if you feel stuck.
+
+        var hashTable = new HashMap<DataBox, List<Record>>();
+        // building
+        for (var record : buildRecords) {
+            var key = record.getValue(buildColumnIndex);
+            if (!hashTable.containsKey(key)) {
+                hashTable.put(key, new ArrayList<>());
+            }
+            hashTable.get(key).add(record);
+        }
+        //probing
+        for (var probeRecord : probeRecords) {
+            var probeKey = probeRecord.getValue(probeColumnIndex);
+            if (!hashTable.containsKey(probeKey)) {
+                continue;
+            }
+            for (var buildRecord : hashTable.get(probeKey)) {
+                this.joinedRecords.add(buildRecord.concat(probeRecord));
+            }
+        }
+
     }
 
     /**
@@ -136,6 +172,11 @@ public class GHJOperator extends JoinOperator {
             // TODO(proj3_part1): implement the rest of grace hash join
             // If you meet the conditions to run the build and probe you should
             // do so immediately. Otherwise you should make a recursive call.
+            if (leftPartitions[i].getNumPages() <= this.numBuffers - 2 || rightPartitions[i].getNumPages() <= this.numBuffers - 2) {
+                buildAndProbe(leftPartitions[i], rightPartitions[i]);
+            } else {
+                run(leftPartitions[i], rightPartitions[i], pass+1);
+            }
         }
     }
 
@@ -200,6 +241,10 @@ public class GHJOperator extends JoinOperator {
     public static Pair<List<Record>, List<Record>> getBreakSHJInputs() {
         ArrayList<Record> leftRecords = new ArrayList<>();
         ArrayList<Record> rightRecords = new ArrayList<>();
+        for (int i = 0; i < 5 * 6 * 8; i++) {
+            leftRecords.add(createRecord(i));
+            rightRecords.add(createRecord(i));
+        }
 
         // TODO(proj3_part1): populate leftRecords and rightRecords such that
         // SHJ breaks when trying to join them but not GHJ
@@ -223,7 +268,10 @@ public class GHJOperator extends JoinOperator {
         ArrayList<Record> leftRecords = new ArrayList<>();
         ArrayList<Record> rightRecords = new ArrayList<>();
         // TODO(proj3_part1): populate leftRecords and rightRecords such that GHJ breaks
-
+        for (int i = 0; i < 5 * 6 * 8; i++) {
+            leftRecords.add(createRecord(1));
+            rightRecords.add(createRecord(1));
+        }
         return new Pair<>(leftRecords, rightRecords);
     }
 }
