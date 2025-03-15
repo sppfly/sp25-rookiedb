@@ -210,6 +210,33 @@ public class LockManager {
         boolean shouldBlock = false;
         synchronized (this) {
             
+            // check errors
+            boolean hasLock = false;
+            var resourceEntry = getResourceEntry(name);
+            for (var lock : resourceEntry.locks) {
+                if (lock.transactionNum == transaction.getTransNum()) {
+                    hasLock = true;
+                    if (lock.lockType == lockType) {
+                        throw new DuplicateLockRequestException("duplicate lock request");
+                    }
+                }
+            }
+            if (!hasLock) {
+                throw  new NoLockHeldException(String.format("no lock held by %s", transaction));
+            }
+
+            // try to promote the lock
+            var newLock = new Lock(name, newLockType, transaction.getTransNum());
+
+            if (resourceEntry.checkCompatible(newLockType, transaction.getTransNum())) {
+                resourceEntry.grantOrUpdateLock(new Lock(name, newLockType, transaction.getTransNum()));
+            } else {
+                shouldBlock = true;
+                resourceEntry.addToQueue(new LockRequest(transaction, newLock), true);
+                transaction.prepareBlock();
+            }
+
+
         }
         if (shouldBlock) {
             transaction.block();
@@ -242,11 +269,18 @@ public class LockManager {
                     .anyMatch((lock) -> lock.transactionNum == transaction.getTransNum() && lock.lockType == lockType)) {
                 throw new DuplicateLockRequestException(String.format("duplicate requesting lock: %s", lockType));
             }
+
+
+            //
+            var newLock = new Lock(name, lockType, transaction.getTransNum());
+
             if (!resourceEntry.checkCompatible(lockType, transaction.getTransNum())
                     || !resourceEntry.waitingQueue.isEmpty()) {
                 shouldBlock = true;
-                resourceEntry.addToQueue(new LockRequest(transaction, new Lock(name, lockType, transaction.getTransNum())), false);
+                resourceEntry.addToQueue(new LockRequest(transaction, newLock), false);
                 transaction.prepareBlock();
+            } else {
+                resourceEntry.grantOrUpdateLock(newLock);
             }
         }
         if (shouldBlock) {
@@ -267,10 +301,29 @@ public class LockManager {
     public void release(TransactionContext transaction, ResourceName name)
             throws NoLockHeldException {
         // TODO(proj4_part1): implement
+        // ! this is a verbose way, will be more concise if no check for duplicate locks,
+        // ! but for the correctness I check it here, maybe remove it after passing the tests 
         // You may modify any part of this method.
+        var hasLock = false;
         synchronized (this) {
-            
+            var resourceEntry = getResourceEntry(name);
+
+
+            for (var lock : resourceEntry.locks) {
+                if (lock.transactionNum == transaction.getTransNum()) {
+                    if (hasLock) {
+                        throw new IllegalStateException("Duplicate locks");
+                    }
+                    hasLock = true;
+                    resourceEntry.releaseLock(lock);
+                    // should processQueue be called insise releaseLock?
+                    resourceEntry.processQueue();    
+                }
+            }
         }
+        if (!hasLock) {
+            throw new NoLockHeldException("no lock held by txn but asked for releasing");
+        }        
     }
 
     /**
@@ -301,7 +354,36 @@ public class LockManager {
         // You may modify any part of this method.
         boolean shouldBlock = false;
         synchronized (this) {
-            
+
+            // check errors
+            boolean hasLock = false;
+            var resourceEntry = getResourceEntry(name);
+            for (var lock : resourceEntry.locks) {
+                if (lock.transactionNum == transaction.getTransNum()) {
+                    hasLock = true;
+                    if (lock.lockType == newLockType) {
+                        throw new DuplicateLockRequestException("duplicate lock request");
+                    }
+                    if (!LockType.substitutable(lock.lockType, newLockType)) {
+                        throw new InvalidLockException(String.format("%s is not compatiable with %s", lock.lockType, newLockType));
+                    }
+                }
+            }
+            if (!hasLock) {
+                throw  new NoLockHeldException(String.format("no lock held by %s", transaction));
+            }
+
+            // try to promote the lock
+            var newLock = new Lock(name, newLockType, transaction.getTransNum());
+
+            if (resourceEntry.checkCompatible(newLockType, transaction.getTransNum())) {
+                resourceEntry.grantOrUpdateLock(new Lock(name, newLockType, transaction.getTransNum()));
+            } else {
+                shouldBlock = true;
+                resourceEntry.addToQueue(new LockRequest(transaction, newLock), true);
+                transaction.prepareBlock();
+            }
+
         }
         if (shouldBlock) {
             transaction.block();
