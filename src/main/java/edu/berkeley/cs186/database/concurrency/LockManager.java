@@ -226,15 +226,15 @@ public class LockManager {
             }
 
             // try to promote the lock
-            var newLock = new Lock(name, newLockType, transaction.getTransNum());
+            // var newLock = new Lock(name, newLockType, transaction.getTransNum());
 
-            if (resourceEntry.checkCompatible(newLockType, transaction.getTransNum())) {
-                resourceEntry.grantOrUpdateLock(new Lock(name, newLockType, transaction.getTransNum()));
-            } else {
-                shouldBlock = true;
-                resourceEntry.addToQueue(new LockRequest(transaction, newLock), true);
-                transaction.prepareBlock();
-            }
+            // if (resourceEntry.checkCompatible(newLockType, transaction.getTransNum())) {
+            //     resourceEntry.grantOrUpdateLock(new Lock(name, newLockType, transaction.getTransNum()));
+            // } else {
+            //     shouldBlock = true;
+            //     resourceEntry.addToQueue(new LockRequest(transaction, newLock), true);
+            //     transaction.prepareBlock();
+            // }
 
 
         }
