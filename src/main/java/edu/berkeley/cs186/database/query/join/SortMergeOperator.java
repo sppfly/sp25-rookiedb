@@ -98,6 +98,11 @@ public class SortMergeOperator extends JoinOperator {
         private Record rightRecord;
         private boolean marked;
 
+
+        private int leftIndex = -1;
+        private int rightIndex = -1;
+        private int markedIndex = -1;
+
         private SortMergeIterator() {
             super();
             leftIterator = getLeftSource().iterator();
@@ -106,7 +111,9 @@ public class SortMergeOperator extends JoinOperator {
 
             if (leftIterator.hasNext() && rightIterator.hasNext()) {
                 leftRecord = leftIterator.next();
+                leftIndex = 0;
                 rightRecord = rightIterator.next();
+                rightIndex = 0;
             }
 
             this.marked = false;
@@ -131,6 +138,7 @@ public class SortMergeOperator extends JoinOperator {
             if (!this.hasNext()) throw new NoSuchElementException();
             Record nextRecord = this.nextRecord;
             this.nextRecord = null;
+            System.out.println(String.format("l %d r %d m %d", leftIndex, rightIndex, markedIndex));
             return nextRecord;
         }
 
@@ -149,27 +157,33 @@ public class SortMergeOperator extends JoinOperator {
                         if (!leftIterator.hasNext()) {
                             return null;
                         } 
-                        leftRecord = leftIterator.next();    
+                        leftRecord = leftIterator.next(); 
+                        leftIndex++;   
                     }
                     while (compare(leftRecord, rightRecord) > 0) {
                         if (!rightIterator.hasNext()) {
                             return null;
                         }
                         rightRecord = rightIterator.next();
+                        rightIndex++;
                     }
                     marked = true;
                     rightIterator.markPrev();
+                    markedIndex = rightIndex - 1;
                 } 
                 if (compare(leftRecord, rightRecord) == 0) {
                     var res = leftRecord.concat(rightRecord);
                     if (rightIterator.hasNext()) {
                         rightRecord = rightIterator.next();
+                        rightIndex++;
                     } else {
                         if (!leftIterator.hasNext()) {
                             return null;
                         }
                         leftRecord = leftIterator.next();
+                        leftIndex++;
                         rightIterator.reset();
+                        rightIndex = markedIndex;
                         marked = false;
                     }
                     return res;
@@ -178,7 +192,9 @@ public class SortMergeOperator extends JoinOperator {
                         return null;
                     }
                     leftRecord = leftIterator.next();
+                    leftIndex++;
                     rightIterator.reset();
+                    rightIndex = markedIndex;
                     marked = false;
                 }
             }
