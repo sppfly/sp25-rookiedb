@@ -10,6 +10,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 import edu.berkeley.cs186.database.TransactionContext;
 
@@ -90,12 +91,18 @@ public class LockManager {
                 var one = locks.get(i);
                 if (Objects.equals(one.transactionNum, lock.transactionNum)) {
                     // already has one
-                    locks.remove(i);
+                    var oldLock = locks.remove(i);
                     locks.add(i, lock);
+                    
+                    var list = transactionLocks.get(lock.transactionNum);
+                    list.remove(oldLock);
+                    list.add(lock);
                     return;
                 }
             }
             locks.add(lock);
+            var list = transactionLocks.getOrDefault(lock.transactionNum, new ArrayList<>());
+            list.add(lock);
         }
 
         /**
@@ -105,6 +112,10 @@ public class LockManager {
         public void releaseLock(Lock lock) {
             // TODO(proj4_part1): implement
             locks.remove(lock);
+            transactionLocks.get(lock.transactionNum).remove(lock);
+            if (transactionLocks.get(lock.transactionNum).isEmpty()) {
+                transactionLocks.remove(lock.transactionNum);
+            }
             processQueue();
         }
 
@@ -133,9 +144,13 @@ public class LockManager {
                 if (checkCompatible(request.lock.lockType, request.transaction.getTransNum())) {
                     // this request can be granted
                     grantOrUpdateLock(request.lock);
+                    request.transaction.unblock();
                     
-
-                    // how to release the lock?
+                    // !! assume the lock is for this resource, this is just an assumption, maybe WRONG 
+                    for (var lockToRelease : request.releasedLocks) {
+                        locks.remove(lockToRelease);
+                        transactionLocks.get(lockToRelease.transactionNum).remove(lockToRelease);
+                    }
 
                     requests.remove();
                 }
@@ -209,7 +224,6 @@ public class LockManager {
         // move the synchronized block elsewhere if you wish.
         boolean shouldBlock = false;
         synchronized (this) {
-            
             // check errors
             boolean hasLock = false;
             var resourceEntry = getResourceEntry(name);
@@ -265,15 +279,14 @@ public class LockManager {
             var resourceEntry = getResourceEntry(name);
 
             // should add the predicate of checking locktype? the comment does not say so
-            if (resourceEntry.locks.stream()
-                    .anyMatch((lock) -> lock.transactionNum == transaction.getTransNum() && lock.lockType == lockType)) {
-                throw new DuplicateLockRequestException(String.format("duplicate requesting lock: %s", lockType));
+            for (var lock : resourceEntry.locks) {
+                // !! assume one txn can not have two locks for a single resource
+                if (lock.transactionNum == transaction.getTransNum()) {
+                    throw new DuplicateLockRequestException(String.format("duplicate requesting lock: %s", lockType));
+                }
             }
 
-
-            //
             var newLock = new Lock(name, lockType, transaction.getTransNum());
-
             if (!resourceEntry.checkCompatible(lockType, transaction.getTransNum())
                     || !resourceEntry.waitingQueue.isEmpty()) {
                 shouldBlock = true;
@@ -304,24 +317,19 @@ public class LockManager {
         // ! this is a verbose way, will be more concise if no check for duplicate locks,
         // ! but for the correctness I check it here, maybe remove it after passing the tests 
         // You may modify any part of this method.
-        var hasLock = false;
+        Optional<Lock> optionalLock = Optional.empty();
         synchronized (this) {
             var resourceEntry = getResourceEntry(name);
 
-
             for (var lock : resourceEntry.locks) {
                 if (lock.transactionNum == transaction.getTransNum()) {
-                    if (hasLock) {
-                        throw new IllegalStateException("Duplicate locks");
-                    }
-                    hasLock = true;
-                    resourceEntry.releaseLock(lock);
-                    // should processQueue be called insise releaseLock?
-                    resourceEntry.processQueue();    
+                    optionalLock = Optional.of(lock);
+                    break;
                 }
             }
+            optionalLock.ifPresent(lock -> resourceEntry.releaseLock(lock));
         }
-        if (!hasLock) {
+        if (optionalLock.isEmpty()) {
             throw new NoLockHeldException("no lock held by txn but asked for releasing");
         }        
     }
