@@ -102,6 +102,7 @@ public class LockManager {
             locks.add(lock);
             var list = transactionLocks.getOrDefault(lock.transactionNum, new ArrayList<>());
             list.add(lock);
+            transactionLocks.put(lock.transactionNum, list);
         }
 
         /**
@@ -152,6 +153,8 @@ public class LockManager {
                     }
 
                     requests.remove();
+                } else {
+                    break;
                 }
             }
             // TODO(proj4_part1): implement
@@ -252,7 +255,7 @@ public class LockManager {
                     if (releaseName == name) {
                         continue;
                     }
-                    getResourceEntry(name).releaseLock(new Lock(releaseName, getLockType(transaction, name), transaction.getTransNum()));
+                    getResourceEntry(releaseName).releaseLock(new Lock(releaseName, getLockType(transaction, name), transaction.getTransNum()));
                 }
 
             } else {
