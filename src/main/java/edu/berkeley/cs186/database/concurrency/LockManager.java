@@ -16,9 +16,9 @@ import edu.berkeley.cs186.database.TransactionContext;
 
 /**
  * LockManager maintains the bookkeeping for what transactions have what locks
- * on what resources and handles queuing logic. The lock manager should generally
- * NOT be used directly: instead, code should call methods of LockContext to
- * acquire/release/promote/escalate locks.
+ * on what resources and handles queuing logic. The lock manager should
+ * generally NOT be used directly: instead, code should call methods of
+ * LockContext to acquire/release/promote/escalate locks.
  *
  * The LockManager is primarily concerned with the mappings between
  * transactions, resources, and locks, and does not concern itself with multiple
@@ -35,12 +35,11 @@ import edu.berkeley.cs186.database.TransactionContext;
  * requested X(db) and there were no queue on db: T1 should be given the X lock
  * on db, and put in an unblocked state via Transaction#unblock).
  *
- * This does mean that in the case of:
- *    queue: S(A) X(A) S(A)
- * only the first request should be removed from the queue when the queue is
- * processed.
+ * This does mean that in the case of: queue: S(A) X(A) S(A) only the first
+ * request should be removed from the queue when the queue is processed.
  */
 public class LockManager {
+
     // transactionLocks is a mapping from transaction number to a list of lock
     // objects held by that transaction.
     private Map<Long, List<Lock>> transactionLocks = new HashMap<>();
@@ -53,6 +52,7 @@ public class LockManager {
     // A ResourceEntry contains the list of locks on a resource, as well as
     // the queue for requests for locks on the resource.
     private class ResourceEntry {
+
         // List of currently granted locks on the resource.
         List<Lock> locks = new ArrayList<>();
         // Queue for yet-to-be-satisfied lock requests on this resource.
@@ -60,7 +60,6 @@ public class LockManager {
 
         // Below are a list of helper methods we suggest you implement.
         // You're free to modify their type signatures, delete, or ignore them.
-
         /**
          * Check if `lockType` is compatible with preexisting locks. Allows
          * conflicts for locks held by transaction with id `except`, which is
@@ -72,7 +71,7 @@ public class LockManager {
             for (var lock : locks) {
                 if (Objects.equals(lock.transactionNum, except)) {
                     continue;
-                } 
+                }
                 if (!LockType.compatible(lockType, lock.lockType)) {
                     return false;
                 }
@@ -93,7 +92,7 @@ public class LockManager {
                     // already has one
                     var oldLock = locks.remove(i);
                     locks.add(i, lock);
-                    
+
                     var list = transactionLocks.get(lock.transactionNum);
                     list.remove(oldLock);
                     list.add(lock);
@@ -145,7 +144,7 @@ public class LockManager {
                     // this request can be granted
                     grantOrUpdateLock(request.lock);
                     request.transaction.unblock();
-                    
+
                     // !! assume the lock is for this resource, this is just an assumption, maybe WRONG 
                     for (var lockToRelease : request.releasedLocks) {
                         locks.remove(lockToRelease);
@@ -175,8 +174,8 @@ public class LockManager {
 
         @Override
         public String toString() {
-            return "Active Locks: " + Arrays.toString(this.locks.toArray()) +
-                    ", Queue: " + Arrays.toString(this.waitingQueue.toArray());
+            return "Active Locks: " + Arrays.toString(this.locks.toArray())
+                    + ", Queue: " + Arrays.toString(this.waitingQueue.toArray());
         }
     }
 
@@ -184,8 +183,8 @@ public class LockManager {
     private Map<String, LockContext> contexts = new HashMap<>();
 
     /**
-     * Helper method to fetch the resourceEntry corresponding to `name`.
-     * Inserts a new (empty) resourceEntry into the map if no entry exists yet.
+     * Helper method to fetch the resourceEntry corresponding to `name`. Inserts
+     * a new (empty) resourceEntry into the map if no entry exists yet.
      */
     private ResourceEntry getResourceEntry(ResourceName name) {
         resourceEntries.putIfAbsent(name, new ResourceEntry());
@@ -216,7 +215,7 @@ public class LockManager {
      * or more of the names in `releaseNames`
      */
     public void acquireAndRelease(TransactionContext transaction, ResourceName name,
-                                  LockType lockType, List<ResourceName> releaseNames)
+            LockType lockType, List<ResourceName> releaseNames)
             throws DuplicateLockRequestException, NoLockHeldException {
         // TODO(proj4_part1): implement
         // You may modify any part of this method. You are not required to keep
@@ -224,33 +223,47 @@ public class LockManager {
         // move the synchronized block elsewhere if you wish.
         boolean shouldBlock = false;
         synchronized (this) {
-            // check errors
             boolean hasLock = false;
+            // ! this may cause deadlock cuz getLockType is requires lock
+            // ! but they are in synchonized blocks, will this really create deadlocks? 
+            for (var releaseName : releaseNames) {
+                if (getLockType(transaction, releaseName) == LockType.NL) {
+                    throw new NoLockHeldException(String.format("no lock held by %s on %s", transaction, releaseName));
+                }
+            }
+
+            // check errors
             var resourceEntry = getResourceEntry(name);
             for (var lock : resourceEntry.locks) {
                 if (lock.transactionNum == transaction.getTransNum()) {
-                    hasLock = true;
-                    if (lock.lockType == lockType) {
+                    if (lock.lockType == lockType && !releaseNames.contains(name)) {
                         throw new DuplicateLockRequestException("duplicate lock request");
                     }
                 }
             }
-            if (!hasLock) {
-                throw  new NoLockHeldException(String.format("no lock held by %s", transaction));
+
+            // try to acquire the lock
+            var newLock = new Lock(name, lockType, transaction.getTransNum());
+
+            if (resourceEntry.checkCompatible(lockType, transaction.getTransNum())) {
+                resourceEntry.grantOrUpdateLock(newLock);
+
+                for (var releaseName : releaseNames) {
+                    if (releaseName == name) {
+                        continue;
+                    }
+                    getResourceEntry(name).releaseLock(new Lock(releaseName, getLockType(transaction, name), transaction.getTransNum()));
+                }
+
+            } else {
+                shouldBlock = true;
+                var releaseList = new ArrayList<Lock>();
+                for (var releaseName : releaseNames) {
+                    releaseList.add(new Lock(releaseName, getLockType(transaction, releaseName), transaction.getTransNum()));
+                }
+                resourceEntry.addToQueue(new LockRequest(transaction, newLock, releaseList), true);
+                transaction.prepareBlock();
             }
-
-            // try to promote the lock
-            // var newLock = new Lock(name, newLockType, transaction.getTransNum());
-
-            // if (resourceEntry.checkCompatible(newLockType, transaction.getTransNum())) {
-            //     resourceEntry.grantOrUpdateLock(new Lock(name, newLockType, transaction.getTransNum()));
-            // } else {
-            //     shouldBlock = true;
-            //     resourceEntry.addToQueue(new LockRequest(transaction, newLock), true);
-            //     transaction.prepareBlock();
-            // }
-
-
         }
         if (shouldBlock) {
             transaction.block();
@@ -261,15 +274,15 @@ public class LockManager {
      * Acquire a `lockType` lock on `name`, for transaction `transaction`.
      *
      * Error checking must be done before the lock is acquired. If the new lock
-     * is not compatible with another transaction's lock on the resource, or if there are
-     * other transaction in queue for the resource, the transaction is
+     * is not compatible with another transaction's lock on the resource, or if
+     * there are other transaction in queue for the resource, the transaction is
      * blocked and the request is placed at the **back** of NAME's queue.
      *
      * @throws DuplicateLockRequestException if a lock on `name` is held by
      * `transaction`
      */
     public void acquire(TransactionContext transaction, ResourceName name,
-                        LockType lockType) throws DuplicateLockRequestException {
+            LockType lockType) throws DuplicateLockRequestException {
         // TODO(proj4_part1): implement
         // You may modify any part of this method. You are not required to keep all your
         // code within the given synchronized block and are allowed to move the
@@ -331,13 +344,13 @@ public class LockManager {
         }
         if (optionalLock.isEmpty()) {
             throw new NoLockHeldException("no lock held by txn but asked for releasing");
-        }        
+        }
     }
 
     /**
-     * Promote a transaction's lock on `name` to `newLockType` (i.e. change
-     * the transaction's lock on `name` from the current lock type to
-     * `newLockType`, if its a valid substitution).
+     * Promote a transaction's lock on `name` to `newLockType` (i.e. change the
+     * transaction's lock on `name` from the current lock type to `newLockType`,
+     * if its a valid substitution).
      *
      * Error checking must be done before any locks are changed. If the new lock
      * is not compatible with another transaction's lock on the resource, the
@@ -356,7 +369,7 @@ public class LockManager {
      * only if B is substitutable for A, and B is not equal to A.
      */
     public void promote(TransactionContext transaction, ResourceName name,
-                        LockType newLockType)
+            LockType newLockType)
             throws DuplicateLockRequestException, NoLockHeldException, InvalidLockException {
         // TODO(proj4_part1): implement
         // You may modify any part of this method.
@@ -372,13 +385,13 @@ public class LockManager {
                     if (lock.lockType == newLockType) {
                         throw new DuplicateLockRequestException("duplicate lock request");
                     }
-                    if (!LockType.substitutable(lock.lockType, newLockType)) {
-                        throw new InvalidLockException(String.format("%s is not compatiable with %s", lock.lockType, newLockType));
+                    if (!LockType.substitutable(newLockType, lock.lockType)) {
+                        throw new InvalidLockException(String.format("%s is not substitutable with %s", newLockType, lock.lockType));
                     }
                 }
             }
             if (!hasLock) {
-                throw  new NoLockHeldException(String.format("no lock held by %s", transaction));
+                throw new NoLockHeldException(String.format("no lock held by %s", transaction));
             }
 
             // try to promote the lock
