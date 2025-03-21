@@ -202,7 +202,17 @@ public class LockContext {
     public LockType getEffectiveLockType(TransactionContext transaction) {
         if (transaction == null) return LockType.NL;
         // TODO(proj4_part2): implement
-        return LockType.NL;
+        LockType explictLockType = getExplicitLockType(transaction);
+        if (explictLockType == LockType.SIX) {
+            return LockType.S;
+        }
+        if (explictLockType == LockType.S || explictLockType == LockType.X) {
+            return explictLockType;
+        }
+        if (parent == null) {
+            return LockType.NL;
+        }
+        return parent.getEffectiveLockType(transaction);
     }
 
     /**
@@ -213,7 +223,7 @@ public class LockContext {
      */
     private boolean hasSIXAncestor(TransactionContext transaction) {
         // TODO(proj4_part2): implement
-        if (getEffectiveLockType(transaction) == LockType.SIX) {
+        if (getExplicitLockType(transaction) == LockType.SIX) {
             return true;
         }
         if (parent == null) {
