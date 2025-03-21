@@ -1,12 +1,12 @@
 package edu.berkeley.cs186.database.concurrency;
 
-import edu.berkeley.cs186.database.TransactionContext;
-
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+
+import edu.berkeley.cs186.database.TransactionContext;
 
 /**
  * LockContext wraps around LockManager to provide the hierarchical structure
@@ -190,7 +190,7 @@ public class LockContext {
     public LockType getExplicitLockType(TransactionContext transaction) {
         if (transaction == null) return LockType.NL;
         // TODO(proj4_part2): implement
-        return LockType.NL;
+        return lockman.getLockType(transaction, this.name);
     }
 
     /**
@@ -213,7 +213,13 @@ public class LockContext {
      */
     private boolean hasSIXAncestor(TransactionContext transaction) {
         // TODO(proj4_part2): implement
-        return false;
+        if (getEffectiveLockType(transaction) == LockType.SIX) {
+            return true;
+        }
+        if (parent == null) {
+            return false;
+        }
+        return parent.hasSIXAncestor(transaction);
     }
 
     /**
