@@ -96,8 +96,29 @@ public class LockContext {
     public void acquire(TransactionContext transaction, LockType lockType)
             throws InvalidLockException, DuplicateLockRequestException {
         // TODO(proj4_part2): implement
+        
+        if (readonly) {
+            throw new UnsupportedOperationException("can not acquire a lock on read only object");
+        }
+        if (lockType == LockType.NL) {
+            throw new InvalidLockException("Attempting to acquire an NL lock, should instead use release");
+        }
+        if (parent == null) {
+            lockman.acquire(transaction, name, lockType);
 
-        return;
+        } else {
+            var parentLock = parent.getExplicitLockType(transaction);
+            if (!LockType.canBeParentLock(parentLock, lockType)) {
+                throw new InvalidLockException("parent do not has lock to give this lock");
+            }
+            if (hasSIXAncestor(transaction) && (lockType == LockType.IS || lockType == LockType.S)) {
+                throw new InvalidLockException("can not grant S/IS when ancestor holds SIX");
+            }
+            lockman.acquire(transaction, name, lockType);
+            var lockCnt = parent.numChildLocks.getOrDefault(transaction.getTransNum(), 0);
+            lockCnt++;
+            parent.numChildLocks.put(transaction.getTransNum(), lockCnt);
+        }
     }
 
     /**
@@ -243,6 +264,25 @@ public class LockContext {
         // TODO(proj4_part2): implement
         return new ArrayList<>();
     }
+
+
+
+    /**
+     * @return the first lock on the path from this object to root
+     */
+    private LockType nearistAncestorLock(TransactionContext transaction) {
+        var thisLevelLock = getExplicitLockType(transaction);
+        if (thisLevelLock != null) {
+            return thisLevelLock;
+        }
+        if (parent == null) {
+            return LockType.NL;
+        }
+        return parent.nearistAncestorLock(transaction);
+    }
+
+
+
 
     /**
      * Disables locking descendants. This causes all new child contexts of this

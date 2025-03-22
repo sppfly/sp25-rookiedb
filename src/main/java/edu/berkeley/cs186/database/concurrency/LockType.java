@@ -74,7 +74,8 @@ public enum LockType {
             case S -> childLockType == S;
             case X -> childLockType == X;
             case IS -> childLockType == IS || childLockType == S;
-            case IX, SIX -> true; 
+            case IX -> true;
+            case SIX -> childLockType == X; 
         };
     
     }

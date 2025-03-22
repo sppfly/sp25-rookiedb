@@ -356,10 +356,10 @@ public class TestLockContext {
 
         runner.run(2, () -> pageLockContext.acquire(t3, LockType.S));
 
-        // assertEquals(LockType.S, pageLockContext.getEffectiveLockType(t1));
-        // assertEquals(LockType.S, pageLockContext.getEffectiveLockType(t2));
-        // assertEquals(LockType.S, pageLockContext.getEffectiveLockType(t3));
-        // assertEquals(LockType.NL, pageLockContext.getEffectiveLockType(t4));
+        assertEquals(LockType.S, pageLockContext.getEffectiveLockType(t1));
+        assertEquals(LockType.S, pageLockContext.getEffectiveLockType(t2));
+        assertEquals(LockType.S, pageLockContext.getEffectiveLockType(t3));
+        assertEquals(LockType.NL, pageLockContext.getEffectiveLockType(t4));
         assertEquals(LockType.NL, pageLockContext.getExplicitLockType(t1));
         assertEquals(LockType.NL, pageLockContext.getExplicitLockType(t2));
         assertEquals(LockType.S, pageLockContext.getExplicitLockType(t3));
@@ -417,5 +417,16 @@ public class TestLockContext {
         dbLockContext.escalate(t1);
         assertEquals(0, dbLockContext.getNumChildren(t1));
     }
-
+    
+    @Test
+    @Category(PublicTests.class)
+    public void testPromoteSIXSaturation() {
+        dbLockContext.acquire(transactions[0], LockType.IX);
+        tableLockContext.acquire(transactions[0], LockType.IS);
+        pageLockContext.acquire(transactions[0], LockType.S);
+        
+        dbLockContext.promote(transactions[0], LockType.SIX);
+        Assert.assertEquals(0, dbLockContext.getNumChildren(transactions[0]));
+        Assert.assertEquals(0, tableLockContext.getNumChildren(transactions[0]));
+    }
 }
