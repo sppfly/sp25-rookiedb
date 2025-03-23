@@ -255,7 +255,7 @@ public class LockManager {
                     if (releaseName == name) {
                         continue;
                     }
-                    getResourceEntry(releaseName).releaseLock(new Lock(releaseName, getLockType(transaction, name), transaction.getTransNum()));
+                    getResourceEntry(releaseName).releaseLock(new Lock(releaseName, getLockType(transaction, releaseName), transaction.getTransNum()));
                 }
 
             } else {

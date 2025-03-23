@@ -234,8 +234,40 @@ public class LockContext {
      */
     public void escalate(TransactionContext transaction) throws NoLockHeldException {
         // TODO(proj4_part2): implement
+        if (readonly) {
+            throw new UnsupportedOperationException("");
+        }   
+        if (getExplicitLockType(transaction) == LockType.NL) {
+            throw new NoLockHeldException("");
+        }
+        LockType toAcquire = LockType.S;
+        List<ResourceName> toRelease = new ArrayList<>();
+        var locks = lockman.getLocks(transaction);
+        for (var lock : locks) {
+            if (lock.name.isDescendantOf(name)) {
+                toRelease.add(lock.name);
+                if (lock.lockType == LockType.X || lock.lockType == LockType.IX) {
+                    toAcquire = LockType.X;
+                }
+            }
+        }
+        
+        int toMinus = toRelease.size();
+        var thisLock = getExplicitLockType(transaction);
+        if (thisLock == LockType.IX || thisLock == LockType.X) {
+            toAcquire = LockType.X;
+        }
+        if (toAcquire == getExplicitLockType(transaction)) {
+            return;
+        }
 
-        return;
+        toRelease.add(name);
+
+        lockman.acquireAndRelease(transaction, name, toAcquire, toRelease);
+        this.numChildLocks.put(transaction.getTransNum(), 0);
+        if (parent != null) {
+            this.parent.numChildLocks.compute(transaction.getTransNum(), (k, v) -> v - toMinus);
+        }
     }
 
     /**
@@ -306,26 +338,6 @@ public class LockContext {
         }
         return res;
     }
-
-
-
-
-    /**
-     * @return the first lock on the path from this object to root
-     */
-    private LockType nearistAncestorLock(TransactionContext transaction) {
-        var thisLevelLock = getExplicitLockType(transaction);
-        if (thisLevelLock != null) {
-            return thisLevelLock;
-        }
-        if (parent == null) {
-            return LockType.NL;
-        }
-        return parent.nearistAncestorLock(transaction);
-    }
-
-
-
 
     /**
      * Disables locking descendants. This causes all new child contexts of this
