@@ -135,8 +135,17 @@ public class LockContext {
     public void release(TransactionContext transaction)
             throws NoLockHeldException, InvalidLockException {
         // TODO(proj4_part2): implement
-
-        return;
+        if (readonly) {
+            throw new UnsupportedOperationException("release is not supported on read only node");
+        }
+        if (numChildLocks.getOrDefault(transaction.getTransNum(), 0) != 0) {
+            throw new InvalidLockException("can not release lock when children hold locks");
+        }
+        lockman.release(transaction, name);
+        if (parent == null) {
+            return;
+        }    
+        parent.numChildLocks.compute(transaction.getTransNum(), (k, v) -> v - 1);
     }
 
     /**
