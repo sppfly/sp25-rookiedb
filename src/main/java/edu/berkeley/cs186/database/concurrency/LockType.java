@@ -99,7 +99,7 @@ public enum LockType {
             case S -> required == S;
             case IS -> required == IS;
             case IX -> required == IX || required == IS;
-            case SIX -> required == S || required == IX || required == SIX;
+            case SIX -> required == S || required == IX || required == SIX || required == IS;
             case NL -> required == NL;
         };
     }

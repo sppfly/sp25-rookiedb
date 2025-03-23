@@ -170,8 +170,33 @@ public class LockContext {
     public void promote(TransactionContext transaction, LockType newLockType)
             throws DuplicateLockRequestException, NoLockHeldException, InvalidLockException {
         // TODO(proj4_part2): implement
-
-        return;
+        if (readonly) {
+            throw new UnsupportedOperationException("can not promote on a readonly node");
+        }
+        if (parent != null) {
+            if (!LockType.canBeParentLock(parent.getExplicitLockType(transaction), newLockType)) {
+                throw new InvalidLockException("can not promote since parent has not permissive lock");
+            }
+            if (hasSIXAncestor(transaction) && newLockType == LockType.SIX) {
+                throw new InvalidLockException("duplicate SIX");
+            }
+        }
+        lockman.promote(transaction, name, newLockType);
+        if (newLockType == LockType.SIX) {
+            var descs = sisDescendants(transaction);
+            descs.sort((a, b) -> {
+                if (a.getNames().size() > b.getNames().size()) {
+                    return -1;
+                } else if (a.getNames().size() == b.getNames().size()) {
+                    return 0;
+                } else {
+                    return 1;
+                }
+            });
+            for (var desc : descs) {
+                LockContext.fromResourceName(lockman, desc).release(transaction);
+            }
+        }
     }
 
     /**
@@ -271,8 +296,17 @@ public class LockContext {
      */
     private List<ResourceName> sisDescendants(TransactionContext transaction) {
         // TODO(proj4_part2): implement
-        return new ArrayList<>();
+        var res = new ArrayList<ResourceName>();
+        var allLocks = lockman.getLocks(transaction);
+        for (var lock : allLocks) {
+            if (lock.name.isDescendantOf(this.name)
+                    && (lock.lockType == LockType.S || lock.lockType == LockType.IS)) {
+                res.add(lock.name);
+            }
+        }
+        return res;
     }
+
 
 
 
