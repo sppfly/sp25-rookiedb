@@ -3,9 +3,11 @@ package edu.berkeley.cs186.database.query;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import edu.berkeley.cs186.database.TransactionContext;
@@ -667,6 +669,27 @@ public class QueryPlan {
         //      calculate the cheapest join with the new table (the one you
         //      fetched an operator for from pass1Map) and the previously joined
         //      tables. Then, update the result map if needed.
+        for (var entry: prevMap.entrySet()) {
+            var tables = entry.getKey();
+            var joinedOp = entry.getValue(); 
+            for (var join: this.joinPredicates) {
+                if (tables.contains(join.leftTable) && !tables.contains(join.rightTable)) {
+                    var rightOp = pass1Map.get(Set.of(join.rightTable));
+                    Objects.requireNonNull(rightOp);
+                    var op = minCostJoinType(joinedOp, rightOp, join.leftColumn, join.rightColumn);
+                    var newTables = new HashSet<>(tables);
+                    newTables.add(join.rightTable);
+                    result.put(newTables, op);
+                } else if (tables.contains(join.rightTable) && !tables.contains(join.leftTable)) {
+                    var leftOp = pass1Map.get(Set.of(join.leftTable));
+                    Objects.requireNonNull(leftOp);
+                    var op = minCostJoinType(leftOp, joinedOp, join.leftColumn, join.rightColumn);
+                    var newTables = new HashSet<>(tables);
+                    newTables.add(join.leftTable);
+                    result.put(newTables, op);
+                }
+            }
+        }
         return result;
     }
 
