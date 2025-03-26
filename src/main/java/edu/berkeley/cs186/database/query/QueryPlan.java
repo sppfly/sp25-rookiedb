@@ -1,5 +1,13 @@
 package edu.berkeley.cs186.database.query;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 import edu.berkeley.cs186.database.TransactionContext;
 import edu.berkeley.cs186.database.common.PredicateOperator;
 import edu.berkeley.cs186.database.databox.DataBox;
@@ -8,8 +16,6 @@ import edu.berkeley.cs186.database.query.join.BNLJOperator;
 import edu.berkeley.cs186.database.query.join.SNLJOperator;
 import edu.berkeley.cs186.database.table.Record;
 import edu.berkeley.cs186.database.table.Schema;
-
-import java.util.*;
 
 /**
  * QueryPlan provides a set of functions to generate simple queries. Calling the
@@ -577,6 +583,21 @@ public class QueryPlan {
         QueryOperator minOp = new SequentialScanOperator(this.transaction, table);
 
         // TODO(proj3_part2): implement
+        var minIO = minOp.estimateIOCost();
+        
+        var chosenIndex = -1;
+        List<Integer> columnIndex = getEligibleIndexColumns(table);
+        if (!columnIndex.isEmpty()) {
+            for (var i : columnIndex) {
+                var select = selectPredicates.get(i);
+                var indexOp = new IndexScanOperator(transaction, table, select.column, select.operator, select.value);
+                if (indexOp.estimateIOCost() < minIO) {
+                    minOp = indexOp;
+                    chosenIndex = i;
+                }
+            } 
+        }
+        minOp = addEligibleSelections(minOp, chosenIndex);
         return minOp;
     }
 
