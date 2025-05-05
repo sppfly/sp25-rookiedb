@@ -22,6 +22,7 @@ import edu.berkeley.cs186.database.recovery.records.EndTransactionLogRecord;
 import edu.berkeley.cs186.database.recovery.records.FreePageLogRecord;
 import edu.berkeley.cs186.database.recovery.records.FreePartLogRecord;
 import edu.berkeley.cs186.database.recovery.records.MasterLogRecord;
+import edu.berkeley.cs186.database.recovery.records.UpdatePageLogRecord;
 
 /**
  * Implementation of ARIES.
@@ -197,6 +198,7 @@ public class ARIESRecoveryManager implements RecoveryManager {
         // ? How can last record be a CLR?
         long currentLSN = lastRecord.getUndoNextLSN().orElse(lastRecordLSN);
         
+        // TODO: code here is a piece of shit, should polish it later
         LogRecord currentLog = logManager.fetchLogRecord(currentLSN);
         while (currentLSN > LSN) {
             if (!currentLog.isUndoable()) {
@@ -272,7 +274,15 @@ public class ARIESRecoveryManager implements RecoveryManager {
         assert (before.length == after.length);
         assert (before.length <= BufferManager.EFFECTIVE_PAGE_SIZE / 2);
         // TODO(proj5): implement
-        return -1L;
+
+        var txnTableEntry = transactionTable.get(transNum);
+        var log = new UpdatePageLogRecord(transNum, pageNum, txnTableEntry.lastLSN, pageOffset, before, after);
+        var LSN = logManager.appendToLog(log);
+        
+        txnTableEntry.lastLSN = LSN;
+        dirtyPageTable.putIfAbsent(pageNum, LSN);
+        
+        return LSN;
     }
 
     /**
