@@ -1,16 +1,27 @@
 package edu.berkeley.cs186.database.recovery;
 
-import edu.berkeley.cs186.database.Transaction;
-import edu.berkeley.cs186.database.common.Pair;
-import edu.berkeley.cs186.database.concurrency.DummyLockContext;
-import edu.berkeley.cs186.database.io.DiskSpaceManager;
-import edu.berkeley.cs186.database.memory.BufferManager;
-import edu.berkeley.cs186.database.memory.Page;
-import edu.berkeley.cs186.database.recovery.records.*;
-
-import java.util.*;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
+
+import edu.berkeley.cs186.database.Transaction;
+import edu.berkeley.cs186.database.common.Pair;
+import edu.berkeley.cs186.database.io.DiskSpaceManager;
+import edu.berkeley.cs186.database.memory.BufferManager;
+import edu.berkeley.cs186.database.recovery.records.AbortTransactionLogRecord;
+import edu.berkeley.cs186.database.recovery.records.AllocPageLogRecord;
+import edu.berkeley.cs186.database.recovery.records.AllocPartLogRecord;
+import edu.berkeley.cs186.database.recovery.records.BeginCheckpointLogRecord;
+import edu.berkeley.cs186.database.recovery.records.CommitTransactionLogRecord;
+import edu.berkeley.cs186.database.recovery.records.EndCheckpointLogRecord;
+import edu.berkeley.cs186.database.recovery.records.EndTransactionLogRecord;
+import edu.berkeley.cs186.database.recovery.records.FreePageLogRecord;
+import edu.berkeley.cs186.database.recovery.records.FreePartLogRecord;
+import edu.berkeley.cs186.database.recovery.records.MasterLogRecord;
 
 /**
  * Implementation of ARIES.
@@ -93,7 +104,16 @@ public class ARIESRecoveryManager implements RecoveryManager {
     @Override
     public long commit(long transNum) {
         // TODO(proj5): implement
-        return -1L;
+        // append the log, flush it
+        var txn = transactionTable.get(transNum);
+        LogRecord commitLog = new CommitTransactionLogRecord(transNum, txn.lastLSN);
+        long logLSN = logManager.appendToLog(commitLog);
+        logManager.flushToLSN(logLSN);
+        txn.lastLSN = logLSN;
+
+        // change txn status
+        txn.transaction.setStatus(Transaction.Status.COMMITTING);
+        return logLSN;
     }
 
     /**
@@ -109,7 +129,16 @@ public class ARIESRecoveryManager implements RecoveryManager {
     @Override
     public long abort(long transNum) {
         // TODO(proj5): implement
-        return -1L;
+        // append the log, flush it
+        var txn = transactionTable.get(transNum);
+        LogRecord commitLog = new AbortTransactionLogRecord(transNum, txn.lastLSN);
+        long logLSN = logManager.appendToLog(commitLog);
+        // logManager.flushToLSN(logLSN);
+        txn.lastLSN = logLSN;
+
+        // change txn status
+        txn.transaction.setStatus(Transaction.Status.ABORTING);
+        return logLSN;
     }
 
     /**
@@ -127,7 +156,23 @@ public class ARIESRecoveryManager implements RecoveryManager {
     @Override
     public long end(long transNum) {
         // TODO(proj5): implement
-        return -1L;
+        // append the log
+        var txn = transactionTable.get(transNum);
+        if (txn.transaction.getStatus() == Transaction.Status.ABORTING) {
+            rollbackToLSN(transNum, transNum);
+        }
+
+
+
+        LogRecord commitLog = new EndTransactionLogRecord(transNum, txn.lastLSN);
+        long logLSN = logManager.appendToLog(commitLog);
+        // logManager.flushToLSN(logLSN);
+        txn.lastLSN = logLSN;
+
+        // change txn status
+        txn.transaction.setStatus(Transaction.Status.COMPLETE);
+        transactionTable.remove(transNum);
+        return logLSN;
     }
 
     /**
@@ -154,6 +199,18 @@ public class ARIESRecoveryManager implements RecoveryManager {
         // Small optimization: if the last record is a CLR we can start rolling
         // back from the next record that hasn't yet been undone.
         long currentLSN = lastRecord.getUndoNextLSN().orElse(lastRecordLSN);
+        while (currentLSN > LSN) {
+            LogRecord currentLog = logManager.fetchLogRecord(currentLSN);
+            if (currentLog.isUndoable()) {
+                LogRecord CLR = currentLog.undo(lastRecordLSN);
+                logManager.appendToLog(CLR);
+                transactionEntry.lastLSN = CLR.getLSN();
+                lastRecord = CLR;
+                lastRecordLSN = lastRecord.getLSN();
+                CLR.redo(this, diskSpaceManager, bufferManager);
+            }
+            currentLSN = lastRecord.getUndoNextLSN().orElse(lastRecordLSN);
+        }
         // TODO(proj5) implement the rollback logic described above
     }
 
