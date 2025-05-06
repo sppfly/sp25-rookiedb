@@ -529,6 +529,7 @@ public class ARIESRecoveryManager implements RecoveryManager {
                 while (EndCheckpointLogRecord.fitsInOneRecord(chkptDPT.size(), cnt)) {
                     cnt++;
                 }
+                cnt--;
 
                 int k = 0;
                 while (txnTableIterator.hasNext() && k < cnt) {
