@@ -457,9 +457,14 @@ public class ARIESRecoveryManager implements RecoveryManager {
         // All of the transaction's changes strictly after the record at LSN should be undone.
         long savepointLSN = transactionEntry.getSavepoint(name);
 
-        // TODO(proj5): implement
-        return;
+        rollbackToLSN(transNum, savepointLSN);
     }
+
+
+
+
+
+
 
     /**
      * Create a checkpoint.
@@ -485,6 +490,73 @@ public class ARIESRecoveryManager implements RecoveryManager {
         Map<Long, Pair<Transaction.Status, Long>> chkptTxnTable = new HashMap<>();
 
         // TODO(proj5): generate end checkpoint record(s) for DPT and transaction table
+
+
+        int maxDirtyPageCount = 0;
+        while (EndCheckpointLogRecord.fitsInOneRecord(maxDirtyPageCount, 0)) {
+            maxDirtyPageCount++;
+        }
+
+
+        int maxTxnTableCnt = 0;
+        while (EndCheckpointLogRecord.fitsInOneRecord(0, maxTxnTableCnt)) {
+            maxTxnTableCnt++;
+        }
+
+        var dirtyPageIterator = new HashMap<>(dirtyPageTable).entrySet().iterator();
+        while (dirtyPageIterator.hasNext()) {
+            chkptDPT.clear();
+            int k = 0;
+            while (dirtyPageIterator.hasNext() && k < maxDirtyPageCount) {
+                var entry = dirtyPageIterator.next();
+                chkptDPT.put(entry.getKey(), entry.getValue());
+                dirtyPageIterator.remove();
+                k++;
+            }
+            if (k == maxDirtyPageCount) {
+                // this page is full, write it
+                LogRecord record = new EndCheckpointLogRecord(chkptDPT, new HashMap<>());
+                logManager.appendToLog(record);
+            }
+        }
+
+        var txnTableIterator = new HashMap<>(transactionTable).entrySet().iterator();
+        while (txnTableIterator.hasNext()) {
+            chkptTxnTable.clear();
+            if (!chkptDPT.isEmpty()) {
+                int cnt = 0;
+                while (EndCheckpointLogRecord.fitsInOneRecord(chkptDPT.size(), maxTxnTableCnt)) {
+                    cnt++;
+                }
+
+                int k = 0;
+                while (txnTableIterator.hasNext() && k < cnt) {
+                    var entry = txnTableIterator.next();
+                    chkptTxnTable.put(entry.getKey(), new Pair<>(entry.getValue().transaction.getStatus(), entry.getValue().lastLSN));
+                    txnTableIterator.remove();
+                    k++;
+                }
+                if (!txnTableIterator.hasNext()) {
+                    break;
+                }
+                LogRecord endRecord = new EndCheckpointLogRecord(chkptDPT, chkptTxnTable);
+                logManager.appendToLog(endRecord);
+                chkptDPT.clear();
+            } else {
+                int k = 0;
+                while (txnTableIterator.hasNext() && k < maxTxnTableCnt) {
+                    var entry = txnTableIterator.next();
+                    chkptTxnTable.put(entry.getKey(), new Pair<>(entry.getValue().transaction.getStatus(), entry.getValue().lastLSN));
+                    txnTableIterator.remove();
+                    k++;
+                }
+                if (!txnTableIterator.hasNext()) {
+                    break;
+                }
+                LogRecord endRecord = new EndCheckpointLogRecord(chkptDPT, chkptTxnTable);
+                logManager.appendToLog(endRecord);
+            }
+        }
 
         // Last end checkpoint record
         LogRecord endRecord = new EndCheckpointLogRecord(chkptDPT, chkptTxnTable);
