@@ -496,21 +496,22 @@ public class ARIESRecoveryManager implements RecoveryManager {
         while (EndCheckpointLogRecord.fitsInOneRecord(maxDirtyPageCount, 0)) {
             maxDirtyPageCount++;
         }
+        maxDirtyPageCount--;
 
 
         int maxTxnTableCnt = 0;
         while (EndCheckpointLogRecord.fitsInOneRecord(0, maxTxnTableCnt)) {
             maxTxnTableCnt++;
         }
+        maxTxnTableCnt--;
 
-        var dirtyPageIterator = new HashMap<>(dirtyPageTable).entrySet().iterator();
+        var dirtyPageIterator = dirtyPageTable.entrySet().iterator();
         while (dirtyPageIterator.hasNext()) {
             chkptDPT.clear();
             int k = 0;
             while (dirtyPageIterator.hasNext() && k < maxDirtyPageCount) {
                 var entry = dirtyPageIterator.next();
                 chkptDPT.put(entry.getKey(), entry.getValue());
-                dirtyPageIterator.remove();
                 k++;
             }
             if (k == maxDirtyPageCount) {
@@ -520,12 +521,12 @@ public class ARIESRecoveryManager implements RecoveryManager {
             }
         }
 
-        var txnTableIterator = new HashMap<>(transactionTable).entrySet().iterator();
+        var txnTableIterator = transactionTable.entrySet().iterator();
         while (txnTableIterator.hasNext()) {
             chkptTxnTable.clear();
             if (!chkptDPT.isEmpty()) {
                 int cnt = 0;
-                while (EndCheckpointLogRecord.fitsInOneRecord(chkptDPT.size(), maxTxnTableCnt)) {
+                while (EndCheckpointLogRecord.fitsInOneRecord(chkptDPT.size(), cnt)) {
                     cnt++;
                 }
 
@@ -533,13 +534,13 @@ public class ARIESRecoveryManager implements RecoveryManager {
                 while (txnTableIterator.hasNext() && k < cnt) {
                     var entry = txnTableIterator.next();
                     chkptTxnTable.put(entry.getKey(), new Pair<>(entry.getValue().transaction.getStatus(), entry.getValue().lastLSN));
-                    txnTableIterator.remove();
                     k++;
                 }
                 if (!txnTableIterator.hasNext()) {
                     break;
                 }
                 LogRecord endRecord = new EndCheckpointLogRecord(chkptDPT, chkptTxnTable);
+                assert EndCheckpointLogRecord.fitsInOneRecord(chkptDPT.size(), chkptTxnTable.size());
                 logManager.appendToLog(endRecord);
                 chkptDPT.clear();
             } else {
@@ -547,7 +548,6 @@ public class ARIESRecoveryManager implements RecoveryManager {
                 while (txnTableIterator.hasNext() && k < maxTxnTableCnt) {
                     var entry = txnTableIterator.next();
                     chkptTxnTable.put(entry.getKey(), new Pair<>(entry.getValue().transaction.getStatus(), entry.getValue().lastLSN));
-                    txnTableIterator.remove();
                     k++;
                 }
                 if (!txnTableIterator.hasNext()) {

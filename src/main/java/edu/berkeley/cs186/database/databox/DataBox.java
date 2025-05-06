@@ -1,8 +1,8 @@
 package edu.berkeley.cs186.database.databox;
 
-import edu.berkeley.cs186.database.common.Buffer;
-
 import java.nio.charset.Charset;
+
+import edu.berkeley.cs186.database.common.Buffer;
 
 /**
  * A DataBox is an element of one of the primitive types specified in Type.java.
